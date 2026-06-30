@@ -8,7 +8,7 @@
 
 You are building **LivingDocs**, a **command-line tool** that keeps technical documentation **synchronized** with source code.
 
-It installs globally via npm, runs in any repository, and is designed to be **scheduled** — a developer wires it into cron, a GitHub Action, or a git hook, and it keeps their documentation current without anyone remembering to do it. This scheduled, self-driving operating model is the point: *living* docs maintain themselves.
+It installs as a single binary (via `cargo`, Homebrew, prebuilt release, or an npm wrapper), runs in any repository, and is designed to be **scheduled** — a developer wires it into cron, a GitHub Action, or a git hook, and it keeps their documentation current without anyone remembering to do it. This scheduled, self-driving operating model is the point: *living* docs maintain themselves.
 
 Synthesis uses the OpenAI API. The deterministic core — parsing, the knowledge graph, drift detection — runs locally and needs no model at all.
 
@@ -22,8 +22,8 @@ The hero job is **drift detection and sync**. Everything else is secondary.
 
 # Distribution
 
-* **Runtime:** Node.js + TypeScript.
-* **Install:** `npm install -g livingdocs` (or run ad hoc with `npx livingdocs`).
+* **Runtime:** Rust. Ships as a single, statically-linked binary — no runtime to install, instant startup, ideal for CI.
+* **Install:** `cargo install livingdocs`, `brew install livingdocs`, prebuilt binaries from GitHub Releases, or `npm install -g livingdocs` (a thin wrapper that fetches the platform binary, so existing npm muscle memory still works).
 * **Invocation:** a single `livingdocs` binary with subcommands.
 * **Designed to be scheduled:** the primary way developers use it is unattended — cron, CI, or a git hook running `livingdocs update` on a cadence. See [Scheduling (Loop Engineering)](#scheduling-loop-engineering).
 
@@ -160,7 +160,7 @@ LivingDocs assumes it will be run by a machine on a cadence, not a human on dema
 # Installation & Quick Start
 
 ```bash
-npm install -g livingdocs
+cargo install livingdocs       # or: brew install livingdocs · npm install -g livingdocs
 export OPENAI_API_KEY=sk-...
 
 cd my-project
@@ -638,7 +638,7 @@ Specialized commands layered on the graph.
 # Architecture
 
 ```text
-livingdocs (npm global CLI)
+livingdocs (Rust CLI — single static binary)
         │
         ▼
 Repository Scanner ◄──── git diff (incremental)
@@ -668,41 +668,45 @@ Managed Markdown + Mermaid  ──► branch + PR (never silent push)
 
 ## Runtime
 
-* Node.js
-* TypeScript
+* Rust (2021 edition)
+* Single statically-linked binary; `tokio` async runtime for API / IO
 
 ## CLI
 
-* `commander` (argument parsing, subcommands)
-* Distributed as an npm package with a `livingdocs` bin; `npx`-runnable
+* `clap` (derive macros, subcommands)
+* Distributed via `cargo`, Homebrew, GitHub Releases, and an npm wrapper
 
 ## Parsing
 
-* Tree-sitter (`web-tree-sitter` / native bindings)
+* `tree-sitter` crate + grammar crates (`tree-sitter-typescript`, `tree-sitter-javascript`)
 
 ## Database
 
-* SQLite
-* better-sqlite3
+* SQLite via `rusqlite` (bundled — no system SQLite needed)
 
 ## AI
 
-* OpenAI API (synthesis)
+* OpenAI via `async-openai`
 * Default: `gpt-4.1`; `gpt-4o-mini` for bulk / low-cost synthesis
-* Provider interface so additional or alternate models can be added later
+* Provider trait so additional or alternate models can be added later
 
 ## Documentation
 
-* Markdown
-* Mermaid
+* Markdown (`pulldown-cmark` to parse; templated rendering to emit)
+* Front matter via `serde_yaml`
+* Mermaid (emitted as text)
 
 ## Graph
 
-* graphology
+* `petgraph` for in-memory traversal (cycles, reverse edges)
 
 ## Git / Output
 
-* `simple-git` (or `git` shell-out) for diffing and branch/PR creation
+* `git2` (libgit2) for diffing and branch/commit; `gh` CLI (or `octocrab`) for PRs
+
+## File Discovery
+
+* `ignore` (gitignore-aware walking) + `globset` for include/exclude
 
 ---
 
@@ -730,7 +734,7 @@ Managed Markdown + Mermaid  ──► branch + PR (never silent push)
 A developer should be able to run, in a 5-year-old repository:
 
 ```bash
-npm install -g livingdocs
+cargo install livingdocs     # or: brew install · prebuilt binary · npm install -g livingdocs
 livingdocs analyze
 ```
 
@@ -752,7 +756,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: npm install -g livingdocs
+      - run: npm install -g livingdocs   # wrapper fetches the prebuilt Rust binary (fast; no compile)
       - run: livingdocs update --pr
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}

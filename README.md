@@ -63,11 +63,12 @@ LivingDocs helps keep documentation alive, relevant, and occasionally smarter th
 ## Install
 
 ```bash
-npm install -g livingdocs
+cargo install livingdocs        # or: brew install livingdocs
+# also: prebuilt binaries on GitHub Releases, or `npm install -g livingdocs` (wrapper)
 export OPENAI_API_KEY=sk-...
 ```
 
-That's the whole setup. It's a CLI. It does not want to live in your editor.
+That's the whole setup. One static binary, no runtime to babysit. It's a CLI — it does not want to live in your editor.
 
 ---
 
