@@ -1,0 +1,32 @@
+[package]
+name = "livingdocs"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.103"
+async-openai = "0.41.1"
+blake3 = "1.8.5"
+clap = { version = "4.6.1", features = ["derive"] }
+git2 = { version = "0.21.0", features = ["vendored-openssl", "vendored-libgit2"] }
+globset = "0.4.18"
+ignore = "0.4.27"
+petgraph = "0.8.3"
+pulldown-cmark = "0.13.4"
+rusqlite = { version = "0.40.1", features = ["bundled"] }
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.150"
+serde_yaml = "0.9.34"
+thiserror = "2.0.18"
+tokio = { version = "1.52.3", features = ["rt-multi-thread", "macros"] }
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+tree-sitter = "0.26.10"
+tree-sitter-javascript = "0.25.0"
+tree-sitter-typescript = "0.23.2"
+
+[dev-dependencies]
+assert_cmd = "2.2.2"
+insta = "1.48.0"
+predicates = "3.1.4"
+tempfile = "3.27.0"
