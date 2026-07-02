@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "lastSynced": "2026-01-01T00:00:00Z",
+  "commit": "abc123",
+  "blocks": {
+    "audit-service.responsibilities": {
+      "file": "docs/components/user-service.md",
+      "entity": "AuditService",
+      "source": ["src/user-service.ts"],
+      "hash": "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+    }
+  }
+}

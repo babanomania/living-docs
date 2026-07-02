@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "lastSynced": "2026-01-01T00:00:00Z",
+  "commit": "abc123",
+  "blocks": {
+    "user-service.responsibilities": {
+      "file": "docs/components/user-service.md",
+      "entity": "UserService",
+      "source": ["src/user-service.ts"],
+      "hash": "25f0fbcfd3fea4f1b1774ee9d015134ef12a4c9a59c45a1e27513034e14df9df"
+    }
+  }
+}

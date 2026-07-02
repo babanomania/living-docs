@@ -1,5 +1,7 @@
 mod cli;
 mod config;
+mod docs;
+mod drift;
 mod graph;
 mod parser;
 mod scanner;
