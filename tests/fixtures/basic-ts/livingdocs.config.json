@@ -1,0 +1,8 @@
+{
+  "include": ["src/**"],
+  "exclude": ["**/*.test.ts"],
+  "docs": "docs/",
+  "model": { "default": "gpt-4.1", "bulk": "gpt-4o-mini" },
+  "budget": { "maxTokens": 200000, "maxFindingsPerRun": 50 },
+  "output": { "mode": "pr", "branch": "livingdocs/update" }
+}
