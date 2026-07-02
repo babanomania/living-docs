@@ -46,6 +46,58 @@ fn analyze_dry_run_prints_extracted_symbols_as_json() {
 }
 
 #[test]
+fn analyze_populates_graph_db() {
+    let dir = tempfile::tempdir().unwrap();
+    copy_dir(&fixture_dir(), dir.path());
+
+    Command::cargo_bin("livingdocs")
+        .unwrap()
+        .current_dir(dir.path())
+        .arg("analyze")
+        .assert()
+        .success();
+
+    let graph_path = dir.path().join(".livingdocs/graph.db");
+    assert!(
+        graph_path.exists(),
+        "analyze should write .livingdocs/graph.db"
+    );
+
+    let conn = rusqlite::Connection::open(&graph_path).unwrap();
+    let file_count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM files", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(file_count, 3);
+
+    let symbol_count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM symbols", [], |row| row.get(0))
+        .unwrap();
+    assert!(symbol_count > 0, "expected symbols to be recorded");
+
+    let dependency_count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM dependencies WHERE from_file = 'src/user-service.ts' AND to_file = 'src/policy-service.ts'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(dependency_count, 1);
+}
+
+fn copy_dir(src: &std::path::Path, dst: &std::path::Path) {
+    for entry in std::fs::read_dir(src).unwrap() {
+        let entry = entry.unwrap();
+        let dest_path = dst.join(entry.file_name());
+        if entry.file_type().unwrap().is_dir() {
+            std::fs::create_dir_all(&dest_path).unwrap();
+            copy_dir(&entry.path(), &dest_path);
+        } else {
+            std::fs::copy(entry.path(), &dest_path).unwrap();
+        }
+    }
+}
+
+#[test]
 fn analyze_without_config_fails_with_helpful_message() {
     let dir = tempfile::tempdir().unwrap();
     Command::cargo_bin("livingdocs")
