@@ -71,6 +71,7 @@ mod tests {
                 entity: None,
                 source: vec![],
                 hash: hash::stable_id("Original generated content."),
+                facts_hash: None,
             },
         );
 
@@ -100,6 +101,7 @@ mod tests {
                 entity: None,
                 source: vec![],
                 hash: hash::stable_id(content),
+                facts_hash: None,
             },
         );
 

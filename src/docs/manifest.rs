@@ -28,7 +28,17 @@ pub struct ManifestBlock {
     pub entity: Option<String>,
     #[serde(default)]
     pub source: Vec<String>,
+    /// Hash of this block's *rendered content* — used by `check`'s
+    /// `managed-block-edited` rule to detect a hand edit (Phase 3).
     pub hash: String,
+    /// Hash of the *graph slice* used to synthesize this block, distinct
+    /// from `hash` above. Lets `sync` skip re-synthesis (and stay
+    /// byte-deterministic despite the LLM being non-deterministic) when
+    /// the underlying facts haven't changed. `hash` alone can't serve
+    /// both purposes: it changes with synthesis *output* even when the
+    /// *input* facts are identical, and vice versa for a hand edit.
+    #[serde(rename = "factsHash", default, skip_serializing_if = "Option::is_none")]
+    pub facts_hash: Option<String>,
 }
 
 impl Manifest {
@@ -91,6 +101,7 @@ mod tests {
                 entity: Some("UserService".to_string()),
                 source: vec!["src/user.ts".to_string()],
                 hash: "abc123".to_string(),
+                facts_hash: Some("def456".to_string()),
             },
         );
 
