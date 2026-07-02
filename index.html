@@ -1,0 +1,1068 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LivingDocs — Documentation that keeps up with your code</title>
+<meta name="description" content="LivingDocs is a Rust CLI that detects when your docs drift from your code — deterministic, offline drift detection, OpenAI-powered fixes, and a PR on a schedule. Never a silent push.">
+<meta property="og:title" content="LivingDocs — Documentation that keeps up with your code">
+<meta property="og:description" content="A drift detector, a sync engine, and a schedulable agent. Your docs stop lying, and nobody schedules a meeting.">
+<meta property="og:type" content="website">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230b1220'/%3E%3Cpath d='M9 8h9l5 5v11H9z' fill='none' stroke='%234ade80' stroke-width='2'/%3E%3Cpath d='M12 18l3 3 5-6' fill='none' stroke='%234ade80' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<style>
+  :root{
+    --bg:#0a0e14; --bg2:#0d1420; --panel:#101826; --panel2:#0c1220;
+    --line:#1e293b; --line2:#273449;
+    --text:#e6edf6; --muted:#8b9bb4; --faint:#5b6b84;
+    --green:#4ade80; --green-dim:#22c55e; --red:#f87171; --amber:#fbbf24;
+    --blue:#60a5fa; --purple:#a78bfa; --cyan:#67e8f9;
+    --mono:ui-monospace,'SF Mono','JetBrains Mono',Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+    --mx:50vw; --my:20vh;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{
+    background:var(--bg);color:var(--text);font-family:var(--sans);
+    line-height:1.6;overflow-x:hidden;
+  }
+  body::before{
+    content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
+    background:
+      radial-gradient(600px 400px at var(--mx) var(--my), rgba(74,222,128,.06), transparent 60%),
+      radial-gradient(900px 500px at 80% -10%, rgba(96,165,250,.07), transparent 60%),
+      linear-gradient(transparent 31px, rgba(148,163,184,.035) 32px),
+      linear-gradient(90deg, transparent 31px, rgba(148,163,184,.035) 32px);
+    background-size:auto,auto,32px 32px,32px 32px;
+  }
+  main,nav,footer{position:relative;z-index:1}
+  a{color:var(--green);text-decoration:none}
+  a:hover{text-decoration:underline}
+  code,pre,.term{font-family:var(--mono)}
+  .wrap{max-width:1080px;margin:0 auto;padding:0 24px}
+  section{padding:84px 0}
+  h2{font-size:clamp(26px,4vw,38px);line-height:1.15;letter-spacing:-.02em;margin-bottom:12px}
+  .kicker{font-family:var(--mono);font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--green);margin-bottom:14px}
+  .lede{color:var(--muted);font-size:17px;max-width:640px}
+
+  /* ---------- nav ---------- */
+  nav{
+    position:sticky;top:0;z-index:50;backdrop-filter:blur(12px);
+    background:rgba(10,14,20,.8);border-bottom:1px solid var(--line);
+  }
+  .nav-in{display:flex;align-items:center;gap:26px;height:58px}
+  .logo{display:flex;align-items:center;gap:10px;font-weight:700;font-size:16px;color:var(--text)}
+  .logo:hover{text-decoration:none}
+  .logo svg{flex:none}
+  .logo .pulse{animation:pulse 2.4s ease-in-out infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+  .nav-links{display:flex;gap:22px;margin-left:auto;align-items:center}
+  .nav-links a{color:var(--muted);font-size:14px}
+  .nav-links a:hover{color:var(--text);text-decoration:none}
+  .gh-btn{
+    display:inline-flex;align-items:center;gap:8px;padding:7px 14px;border:1px solid var(--line2);
+    border-radius:8px;color:var(--text)!important;font-size:14px;background:var(--panel);
+    transition:border-color .2s, transform .15s;
+  }
+  .gh-btn:hover{border-color:var(--green);text-decoration:none;transform:translateY(-1px)}
+
+  /* ---------- hero ---------- */
+  .hero{padding:88px 0 70px}
+  .hero-grid{display:grid;grid-template-columns:1.05fr .95fr;gap:48px;align-items:center}
+  .badge{
+    display:inline-flex;align-items:center;gap:8px;font-family:var(--mono);font-size:12px;
+    color:var(--amber);border:1px solid rgba(251,191,36,.35);background:rgba(251,191,36,.07);
+    padding:5px 12px;border-radius:999px;margin-bottom:22px;
+  }
+  .badge .dot{width:7px;height:7px;border-radius:50%;background:var(--amber);animation:pulse 2s infinite}
+  h1{font-size:clamp(34px,5.4vw,56px);line-height:1.06;letter-spacing:-.03em;margin-bottom:18px}
+  h1 .lie{color:var(--red);position:relative;white-space:nowrap}
+  h1 .lie::after{
+    content:'';position:absolute;left:0;right:0;bottom:6px;height:3px;border-radius:2px;
+    background:repeating-linear-gradient(-45deg,var(--red) 0 4px,transparent 4px 8px);opacity:.85;
+  }
+  h1 .fix{color:var(--green)}
+  .hero p.sub{color:var(--muted);font-size:18px;max-width:520px;margin-bottom:28px}
+  .hero p.sub em{color:var(--text);font-style:normal;border-bottom:1px dotted var(--faint)}
+  .cta-row{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:26px}
+  .btn{
+    display:inline-flex;align-items:center;gap:8px;padding:11px 20px;border-radius:9px;
+    font-size:15px;font-weight:600;border:1px solid transparent;cursor:pointer;
+    transition:transform .15s, box-shadow .2s, border-color .2s;
+  }
+  .btn:hover{text-decoration:none;transform:translateY(-2px)}
+  .btn-green{background:var(--green-dim);color:#04120a}
+  .btn-green:hover{box-shadow:0 6px 24px rgba(34,197,94,.35)}
+  .btn-ghost{border-color:var(--line2);color:var(--text);background:var(--panel)}
+  .btn-ghost:hover{border-color:var(--green)}
+  .install-chip{
+    display:inline-flex;align-items:center;gap:10px;font-family:var(--mono);font-size:13.5px;
+    background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:10px 14px;color:var(--muted);
+  }
+  .install-chip b{color:var(--green);font-weight:400}
+  .copy{
+    border:none;background:transparent;color:var(--faint);cursor:pointer;font-family:var(--mono);
+    font-size:12px;padding:2px 6px;border-radius:5px;transition:color .2s;
+  }
+  .copy:hover{color:var(--green)}
+  .copy.ok{color:var(--green)}
+
+  /* ---------- terminal ---------- */
+  .term{
+    background:#0a101c;border:1px solid var(--line);border-radius:12px;overflow:hidden;
+    box-shadow:0 24px 60px rgba(0,0,0,.5), 0 0 0 1px rgba(74,222,128,.05);
+    font-size:13.5px;line-height:1.7;
+  }
+  .term-bar{display:flex;align-items:center;gap:8px;padding:10px 14px;background:#0d1524;border-bottom:1px solid var(--line)}
+  .term-bar .d{width:11px;height:11px;border-radius:50%}
+  .d.r{background:#ff5f57}.d.y{background:#febc2e}.d.g{background:#28c840}
+  .term-title{margin-left:8px;color:var(--faint);font-size:12px}
+  .term-body{padding:16px 18px;min-height:280px;max-height:340px;overflow-y:auto;white-space:pre-wrap;word-break:break-word}
+  .term-body::-webkit-scrollbar{width:8px}
+  .term-body::-webkit-scrollbar-thumb{background:var(--line2);border-radius:4px}
+  .l{display:block}
+  .l-cmd{color:var(--text)}
+  .l-cmd::before{content:'❯ ';color:var(--green)}
+  .l-dim{color:var(--faint)}
+  .l-ok{color:var(--green)}
+  .l-warn{color:var(--amber)}
+  .l-err{color:var(--red)}
+  .path{color:var(--cyan)}
+  .tag{color:var(--amber);font-weight:700}
+  .caret{display:inline-block;width:8px;height:15px;background:var(--green);vertical-align:-2px;animation:blink 1s steps(1) infinite}
+  @keyframes blink{50%{opacity:0}}
+
+  /* ---------- stats strip ---------- */
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:60px}
+  .stat{
+    background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:18px 20px;
+    transition:transform .2s, border-color .2s;
+  }
+  .stat:hover{transform:translateY(-3px);border-color:var(--line2)}
+  .stat b{display:block;font-size:26px;font-family:var(--mono);color:var(--green);letter-spacing:-.02em}
+  .stat span{color:var(--muted);font-size:13.5px}
+
+  /* ---------- decay ---------- */
+  .decay-grid{display:grid;grid-template-columns:1fr 1fr;gap:40px;align-items:start;margin-top:36px}
+  .decay-card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:24px}
+  .decay-day{font-family:var(--mono);font-size:13px;color:var(--muted);display:flex;justify-content:space-between;margin-bottom:8px}
+  .decay-day b{color:var(--text);font-size:15px}
+  input[type=range]{width:100%;accent-color:var(--green-dim);cursor:pointer;margin:6px 0 18px}
+  .tree{font-family:var(--mono);font-size:13.5px;line-height:2;background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:16px 18px;margin-bottom:18px}
+  .tree .fn{color:var(--cyan)}
+  .tree li{list-style:none;transition:color .4s}
+  .tree li::before{content:'├── ';color:var(--faint)}
+  .tree li:last-child::before{content:'└── ';color:var(--faint)}
+  .tree li.ok{color:var(--green)}
+  .tree li.warn{color:var(--amber)}
+  .tree li.bad{color:var(--red)}
+  .trust-row{display:flex;align-items:center;gap:12px;font-size:13px;color:var(--muted)}
+  .trust-bar{flex:1;height:8px;background:var(--panel2);border:1px solid var(--line);border-radius:99px;overflow:hidden}
+  .trust-fill{height:100%;width:100%;border-radius:99px;background:var(--green-dim);transition:width .4s, background .4s}
+  .protect{
+    margin-top:18px;display:flex;align-items:center;gap:10px;font-size:14px;color:var(--text);
+    cursor:pointer;user-select:none;
+  }
+  .protect input{width:auto;accent-color:var(--green-dim);transform:scale(1.2);cursor:pointer}
+  .protect-note{font-family:var(--mono);font-size:12px;color:var(--green);margin-top:10px;min-height:18px}
+
+  /* ---------- pipeline ---------- */
+  .pipe{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin:38px 0 22px}
+  .pstep{
+    background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:16px 14px;cursor:pointer;
+    transition:border-color .25s, transform .2s, background .25s;position:relative;
+  }
+  .pstep:hover{transform:translateY(-2px)}
+  .pstep .n{font-family:var(--mono);font-size:11px;color:var(--faint)}
+  .pstep .t{font-size:14px;font-weight:650;margin-top:4px;line-height:1.3}
+  .pstep.cloud{border-style:dashed;border-color:rgba(167,139,250,.4)}
+  .pstep.active{border-color:var(--green);background:rgba(74,222,128,.06)}
+  .pstep.cloud.active{border-color:var(--purple);background:rgba(167,139,250,.08)}
+  .pipe-legend{display:flex;gap:24px;font-family:var(--mono);font-size:12px;color:var(--muted);margin-bottom:16px;flex-wrap:wrap}
+  .pipe-legend .sw{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:7px;vertical-align:-1px}
+  .pipe-detail{
+    background:var(--panel2);border:1px solid var(--line);border-radius:11px;padding:18px 22px;
+    font-size:15px;color:var(--muted);min-height:76px;
+  }
+  .pipe-detail b{color:var(--text)}
+
+  /* ---------- diagram ---------- */
+  .diag-grid{display:grid;grid-template-columns:1.15fr .85fr;gap:32px;align-items:start;margin-top:36px}
+  .diag-card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px}
+  .diag-card svg{width:100%;height:auto;display:block}
+  .node rect{fill:#0d1524;stroke:var(--line2);stroke-width:1.5;rx:9}
+  .node text{fill:var(--text);font-family:var(--mono);font-size:14px}
+  .node,.edge{transition:opacity .6s}
+  .edge{stroke:var(--faint);stroke-width:1.5;fill:none;marker-end:url(#arr)}
+  .ghost{opacity:0;pointer-events:none}
+  .diag-btns{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+  .mini-btn{
+    font-family:var(--mono);font-size:12.5px;padding:8px 14px;border-radius:8px;cursor:pointer;
+    background:var(--panel2);border:1px solid var(--line2);color:var(--text);transition:border-color .2s;
+  }
+  .mini-btn:hover{border-color:var(--green)}
+  .chips{min-height:64px;margin-top:14px;display:flex;flex-direction:column;gap:8px}
+  .chip{
+    font-family:var(--mono);font-size:12.5px;padding:8px 12px;border-radius:8px;
+    border:1px solid;animation:chipin .35s ease;
+  }
+  @keyframes chipin{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  .chip.drift{color:var(--amber);border-color:rgba(251,191,36,.4);background:rgba(251,191,36,.06)}
+  .chip.fix{color:var(--green);border-color:rgba(74,222,128,.4);background:rgba(74,222,128,.06)}
+  pre.mermaid-src{
+    background:var(--panel2);border:1px solid var(--line);border-radius:11px;padding:18px;
+    font-size:13px;line-height:1.8;color:var(--muted);transition:box-shadow .4s;
+  }
+  pre.mermaid-src.flash{box-shadow:0 0 0 2px rgba(74,222,128,.5)}
+  pre.mermaid-src .kw{color:var(--purple)}
+
+  /* ---------- audience ---------- */
+  .aud-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:36px}
+  .aud{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:28px}
+  .aud h3{font-size:19px;margin-bottom:6px}
+  .aud .who{font-family:var(--mono);font-size:12px;color:var(--green);letter-spacing:.14em;text-transform:uppercase}
+  .aud ul{margin-top:14px;padding-left:0}
+  .aud li{list-style:none;padding:7px 0;color:var(--muted);font-size:15px;border-bottom:1px dashed var(--line)}
+  .aud li:last-child{border:none}
+  .aud li::before{content:'→ ';color:var(--green);font-family:var(--mono)}
+  .aud li code{font-size:13px;color:var(--cyan)}
+
+  /* ---------- commands ---------- */
+  .cmd-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:36px}
+  .cmd{
+    background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:18px;
+    transition:transform .2s, border-color .2s;
+  }
+  .cmd:hover{transform:translateY(-3px);border-color:var(--line2)}
+  .cmd code{color:var(--green);font-size:13.5px}
+  .cmd p{color:var(--muted);font-size:13px;margin-top:8px;line-height:1.55}
+  .cmd .pill{
+    display:inline-block;margin-top:10px;font-family:var(--mono);font-size:10.5px;padding:3px 9px;
+    border-radius:99px;border:1px solid var(--line2);color:var(--faint);letter-spacing:.05em;
+  }
+  .cmd .pill.off{color:var(--green);border-color:rgba(74,222,128,.35)}
+  .cmd .pill.ai{color:var(--purple);border-color:rgba(167,139,250,.35)}
+
+  /* ---------- schedule ---------- */
+  .sched-grid{display:grid;grid-template-columns:.9fr 1.1fr;gap:40px;align-items:start;margin-top:36px}
+  .cadence{display:flex;flex-direction:column;gap:10px;margin-top:18px}
+  .cadence label{
+    display:flex;align-items:center;gap:12px;padding:13px 16px;border:1px solid var(--line);
+    border-radius:10px;background:var(--panel);cursor:pointer;font-size:14.5px;transition:border-color .2s;
+  }
+  .cadence label:hover{border-color:var(--line2)}
+  .cadence label.sel{border-color:var(--green);background:rgba(74,222,128,.05)}
+  .cadence input{accent-color:var(--green-dim)}
+  .cadence .cron{margin-left:auto;font-family:var(--mono);font-size:12px;color:var(--faint)}
+  pre.yaml{
+    background:#0a101c;border:1px solid var(--line);border-radius:12px;padding:22px;font-size:13px;
+    line-height:1.8;overflow-x:auto;position:relative;
+  }
+  pre.yaml .c{color:var(--faint)}
+  pre.yaml .k{color:var(--blue)}
+  pre.yaml .s{color:var(--green)}
+  .yaml-copy{position:absolute;top:12px;right:12px}
+
+  /* ---------- faq ---------- */
+  .faq{max-width:760px;margin-top:30px}
+  details{border-bottom:1px solid var(--line);padding:4px 0}
+  summary{
+    cursor:pointer;padding:16px 0;font-size:16.5px;font-weight:600;list-style:none;
+    display:flex;justify-content:space-between;align-items:center;gap:16px;
+  }
+  summary::-webkit-details-marker{display:none}
+  summary::after{content:'+';font-family:var(--mono);color:var(--green);font-size:20px;transition:transform .25s}
+  details[open] summary::after{transform:rotate(45deg)}
+  details p{color:var(--muted);padding:0 0 18px;max-width:640px;font-size:15px}
+
+  /* ---------- final cta ---------- */
+  .final{
+    text-align:center;padding:100px 24px;border-top:1px solid var(--line);
+    background:radial-gradient(700px 300px at 50% 0%, rgba(74,222,128,.07), transparent 70%);
+  }
+  .final h2{margin-bottom:10px}
+  .tabs{display:inline-flex;gap:4px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:4px;margin:26px 0 14px}
+  .tabs button{
+    border:none;background:transparent;color:var(--muted);font-family:var(--mono);font-size:13px;
+    padding:8px 16px;border-radius:7px;cursor:pointer;transition:background .2s,color .2s;
+  }
+  .tabs button.sel{background:var(--panel2);color:var(--green);box-shadow:inset 0 0 0 1px var(--line2)}
+  .install-line{
+    display:flex;align-items:center;justify-content:center;gap:14px;font-family:var(--mono);
+    font-size:15px;color:var(--text);
+  }
+  .install-line code{color:var(--green)}
+
+  footer{border-top:1px solid var(--line);padding:34px 0;color:var(--faint);font-size:13.5px}
+  .foot-in{display:flex;justify-content:space-between;gap:20px;flex-wrap:wrap;align-items:center}
+
+  /* ---------- reveal ---------- */
+  .reveal{opacity:0;transform:translateY(22px);transition:opacity .7s ease, transform .7s ease}
+  .reveal.in{opacity:1;transform:none}
+  @media (prefers-reduced-motion:reduce){
+    *,*::before,*::after{animation:none!important;transition:none!important}
+    .reveal{opacity:1;transform:none}
+    html{scroll-behavior:auto}
+  }
+
+  /* ---------- responsive ---------- */
+  @media (max-width:900px){
+    .hero-grid,.decay-grid,.diag-grid,.sched-grid,.aud-grid{grid-template-columns:1fr}
+    .stats,.cmd-grid{grid-template-columns:repeat(2,1fr)}
+    .pipe{grid-template-columns:repeat(2,1fr)}
+    .nav-links a:not(.gh-btn){display:none}
+    section{padding:60px 0}
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap nav-in">
+    <a class="logo" href="#top">
+      <svg width="22" height="22" viewBox="0 0 32 32"><rect width="32" height="32" rx="7" fill="#0d1524" stroke="#1e293b"/><path d="M10 8h8l5 5v11H10z" fill="none" stroke="#4ade80" stroke-width="2"/><path class="pulse" d="M13 18l3 3 4-5" fill="none" stroke="#4ade80" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      LivingDocs
+    </a>
+    <div class="nav-links">
+      <a href="#problem">The problem</a>
+      <a href="#demo">Demo</a>
+      <a href="#how">How it works</a>
+      <a href="#schedule">Scheduling</a>
+      <a href="#faq">FAQ</a>
+      <a class="gh-btn" href="https://github.com/babanomania/living-docs" target="_blank" rel="noopener">
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+        GitHub
+      </a>
+    </div>
+  </div>
+</nav>
+
+<main id="top">
+
+  <!-- ================= HERO ================= -->
+  <header class="hero">
+    <div class="wrap hero-grid">
+      <div>
+        <span class="badge"><span class="dot"></span> pre-release · spec &amp; plan are public</span>
+        <h1>Your docs are <span class="lie">lying</span>.<br>Schedule the <span class="fix">fix</span>.</h1>
+        <p class="sub">
+          LivingDocs is a Rust CLI that compares your documentation against a deterministic
+          graph of your <em>actual code</em>, flags what's now false — offline, no model —
+          then rewrites the generated parts and opens a PR. On a cron. <em>Unlike Dave.</em>
+        </p>
+        <div class="cta-row">
+          <a class="btn btn-green" href="#demo">Try the demo terminal</a>
+          <a class="btn btn-ghost" href="https://github.com/babanomania/living-docs" target="_blank" rel="noopener">Read the spec →</a>
+        </div>
+        <span class="install-chip"><b>❯</b> cargo install livingdocs <button class="copy" data-copy="cargo install livingdocs">copy</button></span>
+      </div>
+      <div class="term" aria-label="Terminal demo of livingdocs check">
+        <div class="term-bar"><span class="d r"></span><span class="d y"></span><span class="d g"></span><span class="term-title">my-project — zsh</span></div>
+        <div class="term-body" id="heroTerm"></div>
+      </div>
+    </div>
+
+    <div class="wrap stats">
+      <div class="stat"><b>0</b><span>API calls needed to detect drift — pure local graph math</span></div>
+      <div class="stat"><b>1</b><span>static binary. No runtime, no node_modules, instant start in CI</span></div>
+      <div class="stat"><b>exit 1</b><span>when docs lie — treat a stale doc like a failing test</span></div>
+      <div class="stat"><b>PR</b><span>never a silent push. A human merges. <code>main</code> stays safe</span></div>
+    </div>
+  </header>
+
+  <!-- ================= PROBLEM ================= -->
+  <section id="problem" class="reveal">
+    <div class="wrap">
+      <div class="kicker">the problem</div>
+      <h2>Every README has a half-life.</h2>
+      <p class="lede">Drag the timeline. Watch a perfectly good README turn into historical fiction — then flip the switch at the bottom and watch LivingDocs hold the line.</p>
+
+      <div class="decay-grid">
+        <div class="decay-card">
+          <div class="decay-day"><b id="dayLabel">Day 1</b><span id="dayHint">fresh out of code review</span></div>
+          <input type="range" id="daySlider" min="0" max="180" value="0" step="1" aria-label="Days since the docs were written">
+          <ul class="tree" id="decayTree">
+            <span class="fn">README.md</span>
+            <li class="ok">Accurate</li>
+            <li class="ok">Helpful</li>
+            <li class="ok">Recently updated</li>
+          </ul>
+          <div class="trust-row">
+            <span>Reader trust</span>
+            <div class="trust-bar"><div class="trust-fill" id="trustFill"></div></div>
+            <b id="trustPct" style="font-family:var(--mono);color:var(--green)">100%</b>
+          </div>
+          <label class="protect">
+            <input type="checkbox" id="protectToggle">
+            Schedule <code style="color:var(--green)">livingdocs update</code> weekly
+          </label>
+          <div class="protect-note" id="protectNote"></div>
+        </div>
+        <div>
+          <p style="color:var(--muted);font-size:16px;margin-bottom:18px">
+            At some point the documentation stops being a guide and becomes an
+            <b style="color:var(--text)">archaeological artifact</b>: an architecture diagram from three
+            reorganizations ago, setup instructions that have never worked, a Getting Started
+            guide that starts with <i>“Ask Rahul.”</i>
+          </p>
+          <p style="color:var(--muted);font-size:16px;margin-bottom:18px">
+            The failure isn't laziness — it's that <b style="color:var(--text)">no human is the right scheduler</b>
+            for this job. Docs drift the moment attention moves on. So LivingDocs assumes
+            <b style="color:var(--text)">a machine runs it</b>: cron, a GitHub Action, or a git hook. It finds its own
+            work, fixes it, verifies the fix, and stops. Zero findings is the stop condition —
+            the loop can't run away.
+          </p>
+          <p style="color:var(--muted);font-size:16px">
+            And because drift detection is <b style="color:var(--text)">graph math, not model vibes</b>,
+            the “is this doc wrong?” step is free, offline, and deterministic.
+            Same graph in, same answer out. Every time.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= DEMO TERMINAL ================= -->
+  <section id="demo" class="reveal" style="background:var(--bg2);border-top:1px solid var(--line);border-bottom:1px solid var(--line)">
+    <div class="wrap">
+      <div class="kicker">interactive demo</div>
+      <h2>Kick the tires. No install, no API key.</h2>
+      <p class="lede">A faithful simulation of the CLI. Type a command or click one — then <code style="color:var(--cyan)">simulate</code> three months of commits and run <code style="color:var(--cyan)">check</code> again.</p>
+
+      <div class="term" style="margin-top:34px">
+        <div class="term-bar"><span class="d r"></span><span class="d y"></span><span class="d g"></span><span class="term-title">livingdocs — interactive demo</span></div>
+        <div class="term-body" id="demoTerm" style="min-height:320px;max-height:380px"></div>
+        <div style="display:flex;align-items:center;gap:10px;padding:10px 18px;border-top:1px solid var(--line)">
+          <span style="color:var(--green)">❯</span>
+          <input id="demoInput" autocomplete="off" spellcheck="false" placeholder="type a command… (try: check)"
+            style="flex:1;background:transparent;border:none;outline:none;color:var(--text);font-family:var(--mono);font-size:13.5px">
+        </div>
+      </div>
+      <div class="diag-btns" style="margin-top:16px" id="demoChips">
+        <button class="mini-btn" data-cmd="livingdocs init">livingdocs init</button>
+        <button class="mini-btn" data-cmd="livingdocs analyze">livingdocs analyze</button>
+        <button class="mini-btn" data-cmd="livingdocs check">livingdocs check</button>
+        <button class="mini-btn" data-cmd="livingdocs update --pr">livingdocs update --pr</button>
+        <button class="mini-btn" data-cmd="simulate">⏩ simulate 3 months of commits</button>
+        <button class="mini-btn" data-cmd="clear">clear</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= HOW IT WORKS ================= -->
+  <section id="how" class="reveal">
+    <div class="wrap">
+      <div class="kicker">how it works</div>
+      <h2>Local facts. Cloud prose. Clean split.</h2>
+      <p class="lede">Click a stage. Everything left of the dashed box runs on your machine with no model at all — the graph is the source of truth, and OpenAI only ever narrates verified facts.</p>
+
+      <div class="pipe" id="pipe">
+        <div class="pstep" data-i="0"><span class="n">01 · local</span><div class="t">Scanner</div></div>
+        <div class="pstep" data-i="1"><span class="n">02 · local</span><div class="t">Tree-sitter parser</div></div>
+        <div class="pstep" data-i="2"><span class="n">03 · local</span><div class="t">Knowledge graph</div></div>
+        <div class="pstep" data-i="3"><span class="n">04 · local ⭐</span><div class="t">Drift detector</div></div>
+        <div class="pstep cloud" data-i="4"><span class="n">05 · openai</span><div class="t">Synthesis</div></div>
+        <div class="pstep" data-i="5"><span class="n">06 · github</span><div class="t">Branch + PR</div></div>
+      </div>
+      <div class="pipe-legend">
+        <span><span class="sw" style="background:var(--green)"></span>runs on your machine — offline, free, deterministic</span>
+        <span><span class="sw" style="background:var(--purple)"></span>the only network call — graph facts in, prose out. Never raw source.</span>
+      </div>
+      <div class="pipe-detail" id="pipeDetail"></div>
+    </div>
+  </section>
+
+  <!-- ================= DIAGRAMS ================= -->
+  <section id="diagrams" class="reveal" style="background:var(--bg2);border-top:1px solid var(--line);border-bottom:1px solid var(--line)">
+    <div class="wrap">
+      <div class="kicker">always-current diagrams</div>
+      <h2>Diagrams that redraw themselves.</h2>
+      <p class="lede">Nobody maintains diagrams by hand — so LivingDocs regenerates them from the graph. Change the architecture below and watch the drift finding fire, then the Mermaid source repair itself.</p>
+
+      <div class="diag-grid">
+        <div>
+          <div class="diag-card">
+            <svg viewBox="0 0 640 420" role="img" aria-label="Architecture diagram that updates when components change">
+              <defs>
+                <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                  <path d="M0 0L10 5L0 10z" fill="#5b6b84"/>
+                </marker>
+              </defs>
+              <path class="edge" d="M175 160 L220 160"/>
+              <path class="edge" d="M380 146 L452 68"/>
+              <path class="edge" d="M380 160 L452 160"/>
+              <path class="edge" id="e-redis" d="M530 184 L530 232"/>
+              <path class="edge ghost" id="e-billing" d="M380 174 L452 356"/>
+              <g class="node"><rect x="25" y="136" width="150" height="48" rx="9"/><text x="100" y="165" text-anchor="middle">Frontend</text></g>
+              <g class="node"><rect x="225" y="136" width="150" height="48" rx="9"/><text x="300" y="165" text-anchor="middle">Gateway</text></g>
+              <g class="node"><rect x="455" y="36" width="150" height="48" rx="9"/><text x="530" y="65" text-anchor="middle">UserService</text></g>
+              <g class="node"><rect x="455" y="136" width="150" height="48" rx="9"/><text x="530" y="165" text-anchor="middle">PolicyService</text></g>
+              <g class="node" id="n-redis"><rect x="455" y="236" width="150" height="48" rx="9" style="stroke:rgba(248,113,113,.5)"/><text x="530" y="265" text-anchor="middle">Redis</text></g>
+              <g class="node ghost" id="n-billing"><rect x="455" y="336" width="150" height="48" rx="9" style="stroke:rgba(74,222,128,.5)"/><text x="530" y="365" text-anchor="middle">BillingService</text></g>
+            </svg>
+          </div>
+          <div class="diag-btns">
+            <button class="mini-btn" id="btnRedis">🗑 Remove Redis</button>
+            <button class="mini-btn" id="btnBilling">＋ Ship BillingService</button>
+            <button class="mini-btn" id="btnReset">↺ Reset</button>
+          </div>
+          <div class="chips" id="diagChips"></div>
+        </div>
+        <div>
+          <p style="font-family:var(--mono);font-size:12px;color:var(--faint);margin-bottom:10px">docs/diagrams/component.md · managed block</p>
+          <pre class="mermaid-src" id="mermaidSrc"></pre>
+          <p style="color:var(--muted);font-size:14.5px;margin-top:16px">
+            Every managed block is tagged with the graph entity it describes and a content hash.
+            When the entity changes, the block is re-synthesized. When it disappears, the reference
+            is flagged as drift. Your hand-written prose around the block is never touched —
+            <b style="color:var(--text)">it colors inside its own lines.</b>
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= AUDIENCE ================= -->
+  <section id="audience" class="reveal">
+    <div class="wrap">
+      <div class="kicker">who it's for</div>
+      <h2>Built for the two people who actually read diagrams.</h2>
+      <div class="aud-grid">
+        <div class="aud">
+          <span class="who">for developers</span>
+          <h3>A drift gate in your pipeline</h3>
+          <ul>
+            <li><code>livingdocs check</code> in CI — exit <code>1</code> when docs lie, like a failing test</li>
+            <li>Offline &amp; deterministic — no API key, no flaky model in your build</li>
+            <li><code>--format json</code> findings with file, line, and the contradicting code fact</li>
+            <li><code>watch</code> mode re-checks on save while you refactor</li>
+            <li>Onboard without “ask somebody” — the docs are actually true</li>
+          </ul>
+        </div>
+        <div class="aud">
+          <span class="who">for architects</span>
+          <h3>A living model of the system</h3>
+          <ul>
+            <li>Component, dependency &amp; sequence diagrams regenerated from the real graph</li>
+            <li><code>livingdocs review</code> flags cycles, oversized modules, tight coupling</li>
+            <li>One owning doc per component — consumers, data touched, known risks</li>
+            <li>Versioned, reviewable artifacts — not chat answers that vanish</li>
+            <li>Your 47th diagram this quarter draws itself</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= COMMANDS ================= -->
+  <section id="commands" class="reveal" style="padding-top:0">
+    <div class="wrap">
+      <div class="kicker">the whole cli</div>
+      <h2>Eight commands. Two that matter.</h2>
+      <div class="cmd-grid">
+        <div class="cmd"><code>livingdocs init</code><p>Scaffold config + managed doc sections in any repo.</p><span class="pill off">offline</span></div>
+        <div class="cmd"><code>livingdocs analyze</code><p>Build the knowledge graph from your code. Incremental — keyed off the git diff.</p><span class="pill off">offline</span></div>
+        <div class="cmd"><code>livingdocs check</code><p>Report drift. Exit 0 clean · 1 drift · 2 error. <b style="color:var(--text)">The CI gate.</b></p><span class="pill off">offline · hero</span></div>
+        <div class="cmd"><code>livingdocs update</code><p>Detect → fix drifted sections → verify → PR. <b style="color:var(--text)">The scheduled entrypoint.</b></p><span class="pill ai">calls openai</span></div>
+        <div class="cmd"><code>livingdocs sync</code><p>Regenerate every managed section from the graph.</p><span class="pill ai">calls openai</span></div>
+        <div class="cmd"><code>livingdocs watch</code><p>Debounced re-check on file changes while you develop.</p><span class="pill off">offline</span></div>
+        <div class="cmd"><code>livingdocs explain</code><p>Grounded explanation of a symbol. The garnish, not the meal.</p><span class="pill ai">calls openai</span></div>
+        <div class="cmd"><code>livingdocs review</code><p>Architecture review: circular deps, large modules, tight coupling.</p><span class="pill off">offline</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= SCHEDULE ================= -->
+  <section id="schedule" class="reveal" style="background:var(--bg2);border-top:1px solid var(--line);border-bottom:1px solid var(--line)">
+    <div class="wrap">
+      <div class="kicker">set it &amp; forget it</div>
+      <h2>Pick a cadence. Merge the PR. That's the job.</h2>
+      <p class="lede">The whole point is that no human is in the loop. Choose how often it wakes up — the workflow updates itself. (Even this YAML doesn't want to be maintained by hand.)</p>
+
+      <div class="sched-grid">
+        <div>
+          <div class="cadence" id="cadence">
+            <label class="sel"><input type="radio" name="cad" value="weekly" checked> Weekly — Monday 06:00 <span class="cron">0 6 * * 1</span></label>
+            <label><input type="radio" name="cad" value="nightly"> Nightly — 02:00 <span class="cron">0 2 * * *</span></label>
+            <label><input type="radio" name="cad" value="monthly"> Monthly — the 1st, 06:00 <span class="cron">0 6 1 * *</span></label>
+            <label><input type="radio" name="cad" value="merge"> On every merge to main <span class="cron">push</span></label>
+          </div>
+          <p style="color:var(--muted);font-size:14px;margin-top:20px">
+            Guardrails, because unattended tools earn trust or they don't get scheduled:
+            output is always a <b style="color:var(--text)">reviewable PR</b>, runs are
+            <b style="color:var(--text)">cost-bounded</b> (only drifted nodes are synthesized, cached by content hash), and
+            <b style="color:var(--text)">goal-bounded</b> — zero findings means stop.
+          </p>
+        </div>
+        <pre class="yaml" id="yamlBlock"><button class="copy yaml-copy" id="yamlCopy">copy</button><code id="yamlCode"></code></pre>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= FAQ ================= -->
+  <section id="faq" class="reveal">
+    <div class="wrap">
+      <div class="kicker">faq</div>
+      <h2>Reasonable questions, honest answers.</h2>
+      <div class="faq">
+        <details>
+          <summary>Isn't this just another “chat with your repo” tool?</summary>
+          <p>No. You can ask it things, but that's the garnish. The main course is drift detection on a schedule: it tells you — and fixes — which docs have quietly become false, every week, without being asked. A chat answer disappears when you close the tab. Docs don't.</p>
+        </details>
+        <details>
+          <summary>Does my code leave my machine?</summary>
+          <p>Drift detection never does — it's local graph math, no API call, no key needed. For the writing step, LivingDocs sends a structured summary (entities, dependencies, routes) to OpenAI. It sends the <i>graph</i>, not your raw files.</p>
+        </details>
+        <details>
+          <summary>Will it push weird AI commits straight to main while I sleep?</summary>
+          <p>No. It opens a pull request. A human merges it. Your <code>main</code> branch is safe from its enthusiasm.</p>
+        </details>
+        <details>
+          <summary>What languages does it understand?</summary>
+          <p>TypeScript and JavaScript at launch, including Express route extraction. Java and Python are next. The parser layer is pluggable — each new language is an addition, not a rewrite.</p>
+        </details>
+        <details>
+          <summary>Is this a VS Code extension?</summary>
+          <p>No. It's a CLI. It lives in your terminal and your CI, not your editor. An editor client may come later — the CLI is the product.</p>
+        </details>
+        <details>
+          <summary>Does it judge my code?</summary>
+          <p>Officially, no. Unofficially, <code>livingdocs review</code> has opinions about your circular dependencies.</p>
+        </details>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= FINAL CTA ================= -->
+  <div class="final reveal">
+    <div class="kicker">get started</div>
+    <h2>Install once. Schedule once.<br>Never think about docs again.</h2>
+    <div class="tabs" id="installTabs">
+      <button class="sel" data-k="cargo">cargo</button>
+      <button data-k="brew">brew</button>
+      <button data-k="npm">npm</button>
+      <button data-k="bin">binary</button>
+    </div>
+    <div class="install-line">
+      <code id="installCmd">cargo install livingdocs</code>
+      <button class="copy" id="installCopy">copy</button>
+    </div>
+    <div class="cta-row" style="justify-content:center;margin-top:30px">
+      <a class="btn btn-green" href="https://github.com/babanomania/living-docs" target="_blank" rel="noopener">★ Star on GitHub</a>
+      <a class="btn btn-ghost" href="#demo">Back to the demo</a>
+    </div>
+  </div>
+
+</main>
+
+<footer>
+  <div class="wrap foot-in">
+    <span>© 2026 LivingDocs · MIT — because documentation should be easier to share than tribal knowledge.</span>
+    <span style="font-family:var(--mono)">Making documentation slightly less fictional, one scheduled run at a time.</span>
+  </div>
+</footer>
+
+<script>
+(function(){
+  'use strict';
+  var reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var sleep = function(ms){ return new Promise(function(r){ setTimeout(r, reduced ? 0 : ms); }); };
+
+  /* ---------- mouse-follow glow ---------- */
+  if(!reduced){
+    document.addEventListener('pointermove', function(e){
+      document.documentElement.style.setProperty('--mx', e.clientX + 'px');
+      document.documentElement.style.setProperty('--my', e.clientY + 'px');
+    }, {passive:true});
+  }
+
+  /* ---------- scroll reveal ---------- */
+  if('IntersectionObserver' in window){
+    var io = new IntersectionObserver(function(es){
+      es.forEach(function(en){ if(en.isIntersecting){ en.target.classList.add('in'); io.unobserve(en.target); } });
+    }, {threshold:.12});
+    document.querySelectorAll('.reveal').forEach(function(el){ io.observe(el); });
+  } else {
+    document.querySelectorAll('.reveal').forEach(function(el){ el.classList.add('in'); });
+  }
+
+  /* ---------- copy buttons ---------- */
+  function wireCopy(btn, getText){
+    btn.addEventListener('click', function(){
+      var t = getText();
+      var done = function(){ btn.textContent='copied ✓'; btn.classList.add('ok');
+        setTimeout(function(){ btn.textContent='copy'; btn.classList.remove('ok'); },1600); };
+      if(navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(t).then(done, done); }
+      else { done(); }
+    });
+  }
+  document.querySelectorAll('.copy[data-copy]').forEach(function(b){ wireCopy(b, function(){ return b.getAttribute('data-copy'); }); });
+
+  /* ---------- shared terminal printer ---------- */
+  function addLine(body, spec){
+    var d = document.createElement('div');
+    d.className = 'l ' + (spec.cls || 'l-dim');
+    if(spec.html){ d.innerHTML = spec.html; } else { d.textContent = spec.text || ''; }
+    body.appendChild(d);
+    body.scrollTop = body.scrollHeight;
+    return d;
+  }
+  function typeCmd(body, text){
+    return new Promise(function(resolve){
+      var d = document.createElement('div'); d.className = 'l l-cmd';
+      var caret = document.createElement('span'); caret.className = 'caret';
+      body.appendChild(d); d.appendChild(caret);
+      body.scrollTop = body.scrollHeight;
+      if(reduced){ d.textContent = text; resolve(); return; }
+      var i = 0;
+      (function tick(){
+        if(i <= text.length){
+          d.textContent = text.slice(0, i);
+          d.appendChild(caret);
+          i++; body.scrollTop = body.scrollHeight;
+          setTimeout(tick, 34 + Math.random()*46);
+        } else { caret.remove(); resolve(); }
+      })();
+    });
+  }
+
+  /* ---------- hero terminal loop ---------- */
+  var heroBody = document.getElementById('heroTerm');
+  var heroScript = [
+    {cmd:'livingdocs check'},
+    {out:[
+      {text:'checking 31 managed blocks against the graph …', cls:'l-dim', d:520},
+      {html:'<span class="path">docs/architecture.md:42</span>  <span class="tag">drift</span>  references "Redis", no Redis dependency in graph', cls:'l', d:420},
+      {html:'<span class="path">docs/apis/users.md:17</span>    <span class="tag">drift</span>  route DELETE /users/:id was removed', cls:'l', d:300},
+      {text:'2 findings · exit 1   (offline — no API key needed)', cls:'l-warn', d:520}
+    ]},
+    {cmd:'livingdocs update --pr'},
+    {out:[
+      {text:'synthesize  2 graph slices → gpt-4.1', cls:'l-dim', d:600},
+      {text:'verify      re-running check … 0 findings', cls:'l-dim', d:640},
+      {text:'✓ PR #128 opened — "2 docs drifted, here are the fixes."', cls:'l-ok', d:500}
+    ]}
+  ];
+  function runHero(){
+    heroBody.innerHTML = '';
+    var p = Promise.resolve();
+    heroScript.forEach(function(step){
+      if(step.cmd){
+        p = p.then(function(){ return sleep(500); }).then(function(){ return typeCmd(heroBody, step.cmd); });
+      } else {
+        step.out.forEach(function(line){
+          p = p.then(function(){ return sleep(line.d); }).then(function(){ addLine(heroBody, line); });
+        });
+      }
+    });
+    p.then(function(){
+      if(reduced) return;
+      setTimeout(runHero, 5200);
+    });
+  }
+  runHero();
+
+  /* ---------- interactive demo terminal ---------- */
+  var demoBody = document.getElementById('demoTerm');
+  var demoInput = document.getElementById('demoInput');
+  var demoState = { drifted:true, analyzed:false, busy:false };
+
+  addLine(demoBody, {text:'livingdocs interactive demo — a fake terminal wired to a real philosophy.', cls:'l-dim'});
+  addLine(demoBody, {html:'type a command or click a chip below. try <span style="color:var(--cyan)">check</span>.', cls:'l-dim'});
+
+  function demoLines(cmd){
+    switch(cmd){
+      case 'init': return [
+        {text:'✓ wrote livingdocs.config.json', cls:'l-ok', d:260},
+        {text:'✓ scaffolded docs/ — 31 managed sections', cls:'l-ok', d:260},
+        {text:'✓ gitignored .livingdocs/graph.db + drift.json', cls:'l-ok', d:240},
+        {text:'next: livingdocs analyze', cls:'l-dim', d:220}
+      ];
+      case 'analyze':
+        demoState.analyzed = true;
+        return [
+        {text:'scanning src/** … 214 files (diff since a1b2c3d)', cls:'l-dim', d:420},
+        {text:'tree-sitter … 187 symbols · 23 routes (express)', cls:'l-dim', d:420},
+        {text:'graph … 42 components · 118 edges → .livingdocs/graph.db', cls:'l-dim', d:420},
+        {text:'done in 3.2s · offline · $0.00', cls:'l-ok', d:300}
+      ];
+      case 'check':
+        if(demoState.drifted) return [
+          {text:'walking manifest … 31 blocks against the graph', cls:'l-dim', d:420},
+          {html:'<span class="path">docs/architecture.md:42</span>          <span class="tag">drift</span>  references "Redis", no Redis dependency in graph', cls:'l', d:340},
+          {html:'<span class="path">docs/apis/users.md:17</span>            <span class="tag">drift</span>  route DELETE /users/:id was removed', cls:'l', d:280},
+          {html:'<span class="path">docs/components/audit-service.md:8</span> <span class="tag">drift</span>  entity AuditService no longer exists', cls:'l', d:280},
+          {text:'3 findings · exit 1 — offline, deterministic, free', cls:'l-warn', d:340}
+        ];
+        return [
+          {text:'walking manifest … 31 blocks against the graph', cls:'l-dim', d:420},
+          {text:'0 findings · exit 0 — your docs are, remarkably, telling the truth', cls:'l-ok', d:340}
+        ];
+      case 'update': case 'update --pr':
+        if(demoState.drifted){
+          demoState.drifted = false;
+          return [
+            {text:'detect      3 drifted sections', cls:'l-dim', d:400},
+            {text:'synthesize  3 graph slices → gpt-4.1 · 2,341 tokens (budget 200k)', cls:'l-dim', d:520},
+            {text:'write       3 managed blocks updated · your prose untouched', cls:'l-dim', d:420},
+            {text:'verify      re-running check … 0 findings ✓', cls:'l-dim', d:560},
+            {text:'✓ branch livingdocs/update → PR #128: "3 docs drifted, here are the fixes."', cls:'l-ok', d:420},
+            {text:'exit 0 · nobody scheduled a meeting', cls:'l-dim', d:260}
+          ];
+        }
+        return [
+          {text:'detect      0 drifted sections', cls:'l-dim', d:400},
+          {text:'nothing to do — stopping. (goal-bounded loops stop. that\'s the point.)', cls:'l-ok', d:340}
+        ];
+      case 'simulate':
+        demoState.drifted = true;
+        return [
+          {text:'⏩ 417 commits later …', cls:'l-warn', d:420},
+          {text:'  - AuditService deleted in a refactor', cls:'l-dim', d:300},
+          {text:'  - Redis swapped for Postgres LISTEN/NOTIFY', cls:'l-dim', d:300},
+          {text:'  - DELETE /users/:id removed (compliance insisted)', cls:'l-dim', d:300},
+          {text:'  - times anyone touched docs/: 0  (as usual)', cls:'l-err', d:360},
+          {html:'now try: <span style="color:var(--cyan)">livingdocs check</span>', cls:'l-dim', d:260}
+        ];
+      case 'help': return [
+        {text:'available: init · analyze · check · update --pr · simulate · clear · help', cls:'l-dim', d:150}
+      ];
+      default: return null;
+    }
+  }
+
+  function runDemo(raw){
+    if(demoState.busy) return;
+    var input = raw.trim();
+    if(!input) return;
+    var cmd = input.replace(/^livingdocs\s+/, '').trim();
+    demoState.busy = true;
+    addLine(demoBody, {text:input, cls:'l-cmd'});
+    var seq;
+    if(cmd === 'clear'){ demoBody.innerHTML=''; demoState.busy=false; return; }
+    seq = demoLines(cmd);
+    var p = Promise.resolve();
+    if(!seq){
+      p = p.then(function(){ return sleep(180); }).then(function(){
+        addLine(demoBody, {text:'command not found: ' + cmd + ' — try help', cls:'l-err'});
+      });
+    } else {
+      seq.forEach(function(line){
+        p = p.then(function(){ return sleep(line.d); }).then(function(){ addLine(demoBody, line); });
+      });
+    }
+    p.then(function(){ demoState.busy = false; demoInput.focus(); });
+  }
+
+  demoInput.addEventListener('keydown', function(e){
+    if(e.key === 'Enter'){ runDemo(demoInput.value); demoInput.value=''; }
+  });
+  document.getElementById('demoChips').addEventListener('click', function(e){
+    var b = e.target.closest('[data-cmd]');
+    if(b) runDemo(b.getAttribute('data-cmd'));
+  });
+  demoBody.addEventListener('click', function(){ demoInput.focus(); });
+
+  /* ---------- decay slider ---------- */
+  var slider = document.getElementById('daySlider');
+  var dayLabel = document.getElementById('dayLabel');
+  var dayHint = document.getElementById('dayHint');
+  var tree = document.getElementById('decayTree');
+  var trustFill = document.getElementById('trustFill');
+  var trustPct = document.getElementById('trustPct');
+  var protect = document.getElementById('protectToggle');
+  var protectNote = document.getElementById('protectNote');
+
+  var stages = [
+    {min:0,   hint:'fresh out of code review', cls:'ok',
+     lines:['Accurate','Helpful','Recently updated']},
+    {min:15,  hint:'a sprint or two later', cls:'warn',
+     lines:['Mostly accurate','Slightly suspicious','Missing several things']},
+    {min:75,  hint:'two reorgs ago', cls:'warn',
+     lines:['Questionable','References the old auth flow','Diagram predates the rewrite']},
+    {min:135, hint:'archaeological artifact', cls:'bad',
+     lines:['Historical fiction','References a service that no longer exists','Mentions "upcoming features" removed last quarter']}
+  ];
+
+  function renderDecay(){
+    var day = parseInt(slider.value, 10);
+    dayLabel.textContent = 'Day ' + (day === 0 ? 1 : day);
+    var items = tree.querySelectorAll('li');
+    if(protect.checked){
+      var runs = Math.floor(day / 7);
+      dayHint.textContent = 'livingdocs is on duty';
+      var pLines = ['Accurate','Helpful','Synced Monday 06:00 by livingdocs'];
+      items.forEach(function(li, i){ li.textContent = pLines[i]; li.className = 'ok'; });
+      trustFill.style.width = '100%'; trustFill.style.background = 'var(--green-dim)';
+      trustPct.textContent = '100%'; trustPct.style.color = 'var(--green)';
+      protectNote.textContent = runs > 0
+        ? '✓ livingdocs update ran ' + runs + '× while you dragged that slider · 0 meetings scheduled'
+        : '✓ scheduled — first run next Monday, 06:00';
+      return;
+    }
+    protectNote.textContent = '';
+    var st = stages[0];
+    stages.forEach(function(s){ if(day >= s.min) st = s; });
+    dayHint.textContent = st.hint;
+    items.forEach(function(li, i){ li.textContent = st.lines[i]; li.className = st.cls; });
+    var trust = Math.max(9, Math.round(100 - (day / 180) * 91));
+    trustFill.style.width = trust + '%';
+    trustFill.style.background = trust > 66 ? 'var(--green-dim)' : trust > 33 ? 'var(--amber)' : 'var(--red)';
+    trustPct.textContent = trust + '%';
+    trustPct.style.color = trust > 66 ? 'var(--green)' : trust > 33 ? 'var(--amber)' : 'var(--red)';
+  }
+  slider.addEventListener('input', renderDecay);
+  protect.addEventListener('change', renderDecay);
+  renderDecay();
+
+  /* ---------- pipeline ---------- */
+  var pipeSteps = Array.prototype.slice.call(document.querySelectorAll('.pstep'));
+  var pipeDetail = document.getElementById('pipeDetail');
+  var pipeInfo = [
+    '<b>Scanner.</b> Walks the repo gitignore-aware, honoring your include/exclude globs — and only the diff since the last run. A scheduled run must be cheap, or it will not be scheduled.',
+    '<b>Tree-sitter parser.</b> Extracts classes, functions, interfaces, imports, and Express routes as structure — not vibes. TypeScript &amp; JavaScript at launch; grammars are pluggable.',
+    '<b>Knowledge graph.</b> SQLite + petgraph. Every symbol gets a stable id; every doc claim is anchored to a code fact. This is the ground truth everything else defers to.',
+    '<b>Drift detector — the hero.</b> Walks the doc manifest and asks the graph: does this entity, route, dependency still exist? Pure graph math. Offline, free, deterministic, exit codes for CI.',
+    '<b>Synthesis (the only network call).</b> OpenAI rewrites <i>only the drifted sections</i>, from graph slices — entities, methods, edges as JSON. Never raw source. Cached by content hash, capped by budget.',
+    '<b>Branch + PR.</b> Changes land on <code>livingdocs/update</code> and open a pull request titled “3 docs drifted, here are the fixes.” A human merges. Never a silent push.'
+  ];
+  var pipeIdx = 3, pipeTimer = null, pipePaused = 0;
+  function setPipe(i){
+    pipeIdx = i;
+    pipeSteps.forEach(function(s, j){ s.classList.toggle('active', j === i); });
+    pipeDetail.innerHTML = pipeInfo[i];
+  }
+  setPipe(3);
+  pipeSteps.forEach(function(s){
+    s.addEventListener('click', function(){
+      setPipe(parseInt(s.getAttribute('data-i'), 10));
+      pipePaused = Date.now() + 9000;
+    });
+  });
+  if(!reduced){
+    pipeTimer = setInterval(function(){
+      if(Date.now() < pipePaused) return;
+      setPipe((pipeIdx + 1) % pipeSteps.length);
+    }, 2600);
+  }
+
+  /* ---------- self-redrawing diagram ---------- */
+  var dg = { redis:true, billing:false };
+  var nRedis = document.getElementById('n-redis'), eRedis = document.getElementById('e-redis');
+  var nBill  = document.getElementById('n-billing'), eBill = document.getElementById('e-billing');
+  var mermaid = document.getElementById('mermaidSrc');
+  var chipsBox = document.getElementById('diagChips');
+  var btnRedis = document.getElementById('btnRedis');
+  var btnBilling = document.getElementById('btnBilling');
+
+  function renderMermaid(flash){
+    var lines = ['<span class="kw">graph</span> TD',
+      '  Frontend --> Gateway',
+      '  Gateway --> UserService',
+      '  Gateway --> PolicyService'];
+    if(dg.redis) lines.push('  PolicyService --> Redis');
+    if(dg.billing) lines.push('  Gateway --> BillingService');
+    mermaid.innerHTML = lines.join('\n');
+    if(flash){
+      mermaid.classList.add('flash');
+      setTimeout(function(){ mermaid.classList.remove('flash'); }, 900);
+    }
+  }
+  function chip(cls, text, ttl){
+    var c = document.createElement('div');
+    c.className = 'chip ' + cls; c.textContent = text;
+    chipsBox.appendChild(c);
+    while(chipsBox.children.length > 3) chipsBox.removeChild(chipsBox.firstChild);
+    if(ttl) setTimeout(function(){ if(c.parentNode) c.remove(); }, ttl);
+  }
+  function syncDiagram(){
+    nRedis.classList.toggle('ghost', !dg.redis);
+    eRedis.classList.toggle('ghost', !dg.redis);
+    nBill.classList.toggle('ghost', !dg.billing);
+    eBill.classList.toggle('ghost', !dg.billing);
+    btnRedis.textContent = dg.redis ? '🗑 Remove Redis' : '↩ Restore Redis';
+    btnBilling.textContent = dg.billing ? '🗑 Unship BillingService' : '＋ Ship BillingService';
+  }
+  btnRedis.addEventListener('click', function(){
+    dg.redis = !dg.redis; syncDiagram();
+    if(!dg.redis){
+      chip('drift', 'docs/diagrams/component.md:6  drift  diagram references "Redis", not in graph');
+      setTimeout(function(){ chip('fix', '✓ managed block re-synthesized — diagram regenerated'); renderMermaid(true); }, reduced ? 0 : 1200);
+    } else {
+      chip('fix', '✓ Redis back in the graph — diagram regenerated'); renderMermaid(true);
+    }
+  });
+  btnBilling.addEventListener('click', function(){
+    dg.billing = !dg.billing; syncDiagram();
+    if(dg.billing){
+      chip('drift', 'new component "BillingService" has no documentation');
+      setTimeout(function(){ chip('fix', '✓ docs/components/billing-service.md created · diagram regenerated'); renderMermaid(true); }, reduced ? 0 : 1200);
+    } else {
+      chip('fix', '✓ BillingService removed — docs pruned, diagram regenerated'); renderMermaid(true);
+    }
+  });
+  document.getElementById('btnReset').addEventListener('click', function(){
+    dg.redis = true; dg.billing = false; syncDiagram();
+    chipsBox.innerHTML = ''; renderMermaid(false);
+  });
+  syncDiagram(); renderMermaid(false);
+
+  /* ---------- cron picker ---------- */
+  var yamlCode = document.getElementById('yamlCode');
+  var cadBox = document.getElementById('cadence');
+  var cadences = {
+    weekly:  { on: ['  <span class="k">schedule:</span>', '    - <span class="k">cron:</span> <span class="s">"0 6 * * 1"</span>   <span class="c"># Monday 06:00 — before anyone is awake to argue</span>'] },
+    nightly: { on: ['  <span class="k">schedule:</span>', '    - <span class="k">cron:</span> <span class="s">"0 2 * * *"</span>   <span class="c"># every night at 02:00 — docs fixed by standup</span>'] },
+    monthly: { on: ['  <span class="k">schedule:</span>', '    - <span class="k">cron:</span> <span class="s">"0 6 1 * *"</span>   <span class="c"># the 1st, 06:00 — a monthly dose of honesty</span>'] },
+    merge:   { on: ['  <span class="k">push:</span>', '    <span class="k">branches:</span> [<span class="s">main</span>]        <span class="c"># drift never survives a merge</span>'] }
+  };
+  var yamlPlain = { current:'' };
+  function renderYaml(key){
+    var c = cadences[key];
+    var html = [
+      '<span class="c"># .github/workflows/livingdocs.yml</span>',
+      '<span class="k">name:</span> livingdocs',
+      '<span class="k">on:</span>'
+    ].concat(c.on).concat([
+      '<span class="k">jobs:</span>',
+      '  <span class="k">livingdocs:</span>',
+      '    <span class="k">runs-on:</span> ubuntu-latest',
+      '    <span class="k">steps:</span>',
+      '      - <span class="k">uses:</span> actions/checkout@v4',
+      '      - <span class="k">run:</span> npm install -g livingdocs',
+      '      - <span class="k">run:</span> livingdocs update --pr',
+      '        <span class="k">env:</span>',
+      '          <span class="k">OPENAI_API_KEY:</span> ' + '$' + '{{ secrets.OPENAI_API_KEY }}'
+    ]).join('\n');
+    yamlCode.innerHTML = html;
+    var tmp = document.createElement('div'); tmp.innerHTML = html;
+    yamlPlain.current = tmp.textContent;
+  }
+  cadBox.addEventListener('change', function(e){
+    cadBox.querySelectorAll('label').forEach(function(l){ l.classList.remove('sel'); });
+    e.target.closest('label').classList.add('sel');
+    renderYaml(e.target.value);
+  });
+  renderYaml('weekly');
+  wireCopy(document.getElementById('yamlCopy'), function(){ return yamlPlain.current; });
+
+  /* ---------- install tabs ---------- */
+  var installCmds = {
+    cargo:'cargo install livingdocs',
+    brew:'brew install livingdocs',
+    npm:'npm install -g livingdocs',
+    bin:'# grab a prebuilt binary from GitHub Releases'
+  };
+  var installCmd = document.getElementById('installCmd');
+  var tabs = document.getElementById('installTabs');
+  tabs.addEventListener('click', function(e){
+    var b = e.target.closest('button'); if(!b) return;
+    tabs.querySelectorAll('button').forEach(function(x){ x.classList.remove('sel'); });
+    b.classList.add('sel');
+    installCmd.textContent = installCmds[b.getAttribute('data-k')];
+  });
+  wireCopy(document.getElementById('installCopy'), function(){ return installCmd.textContent; });
+})();
+</script>
+</body>
+</html>

@@ -4,6 +4,8 @@
 
 A command-line tool you install once, schedule once, and then never have to think about — while your docs quietly stop lying.
 
+> **Status: pre-release.** The design is settled and lives in this repo; the binary isn't on crates.io or Homebrew yet. Yes, we noticed the irony of a drift-detection tool whose README describes an unshipped product. Consider everything below the target state — and the first thing we'll point LivingDocs at.
+
 ---
 
 ## The Problem
@@ -85,6 +87,23 @@ livingdocs update      # fix the lies, open a PR, leave the rest of my prose alo
 
 `check` is the one you put in CI. `update` is the one you schedule.
 
+Note that `check` never calls an API — drift detection is local graph math, so it runs offline, free, with no key. You only need `OPENAI_API_KEY` when something drifted and prose has to be rewritten.
+
+---
+
+## Commands
+
+| Command | What it does |
+| --- | --- |
+| `livingdocs init` | Scaffold config + managed doc sections |
+| `livingdocs analyze` | Read the code, build the knowledge graph, write initial docs |
+| `livingdocs check` | Report drift. Exit `0` clean, `1` drift, `2` error — CI-friendly |
+| `livingdocs update` | Detect drift → fix the generated parts → verify → open a PR |
+| `livingdocs sync` | Regenerate every managed section from the graph |
+| `livingdocs watch` | Re-check on file changes while you develop |
+| `livingdocs explain <name>` | Grounded explanation of a symbol (the garnish, not the meal) |
+| `livingdocs review` | Flag circular dependencies, oversized modules, tight coupling |
+
 ---
 
 ## What It Writes Into Your Repo
@@ -143,7 +162,7 @@ This is the whole point.
 LivingDocs reads your actual code, then reads your docs, and notices the disagreements:
 
 ```text
-docs/architecture.md:42  drift  references "Redis", no Redis dependency since March
+docs/architecture.md:42  drift  references "Redis", no Redis dependency in graph
 ```
 
 It exits non-zero, so your CI can treat a lying doc like a failing test.
@@ -258,6 +277,10 @@ No. It's a CLI. It lives in your terminal and your CI, not your editor. (An edit
 No. You can ask it things, but that's the garnish.
 
 The main course is drift detection on a schedule: it tells you — and fixes — which docs have quietly become false, every week, without being asked. No chatbot does that, because a chat answer disappears the second you close the tab. Docs don't.
+
+### What languages does it understand?
+
+TypeScript and JavaScript at launch, including Express route extraction. Java and Python are next. The parser layer is pluggable, so each new language is an addition, not a rewrite.
 
 ### Is LivingDocs AI-powered?
 
