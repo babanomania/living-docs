@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.103"
-async-openai = "0.41.1"
+async-openai = { version = "0.41.1", features = ["responses"] }
 blake3 = "1.8.5"
 clap = { version = "4.6.1", features = ["derive"] }
 git2 = { version = "0.21.0", features = ["vendored-openssl", "vendored-libgit2"] }

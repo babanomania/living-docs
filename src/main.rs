@@ -5,6 +5,11 @@ mod drift;
 mod graph;
 mod parser;
 mod scanner;
+// DECISION: the synthesis adapter has no caller until Phase 5's
+// update/sync and Phase 7's explain wire it up; #[allow(dead_code)]
+// on the whole module rather than annotating every item individually.
+#[allow(dead_code)]
+mod synthesis;
 mod util;
 
 use clap::Parser;
